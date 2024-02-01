@@ -32,6 +32,13 @@ type ApplicationLayerSpec struct {
 	ApplicationLayerPolicy *ApplicationLayerPolicyStatusType `json:"applicationLayerPolicy,omitempty"`
 	// User-configurable settings for the Envoy proxy.
 	EnvoySettings *EnvoySettings `json:"envoy,omitempty"`
+	// Istio struct defines the configuration for the Istio service mesh control plane.
+	// It controls the installation of Istio using the IstioOperator Custom Resource (CR).
+	// This struct specifies the configuration for the IstioOperator CR, which details
+	// the settings and options for the Istio installation. Additionally, it includes
+	// a Web Application Firewall (WAF) configuration
+	// +optional
+	Istio IstioConfig `json:"istio,omitempty"`
 }
 
 type LogCollectionStatusType string
@@ -81,6 +88,75 @@ type LogCollectionSpec struct {
 	// +optional
 	// Default: -1
 	LogRequestsPerInterval *int64 `json:"logRequestsPerInterval,omitempty"`
+}
+
+type IstioConfig struct {
+	//metav1.TypeMeta   `json:",inline"`
+	//metav1.ObjectMeta `json:"metadata,omitempty"`
+	//Spec              istiooperator.IstioOperatorSpec `json:"spec"`
+	// +optional
+	Profile string `json:"profile,omitempty"`
+	// Waf defines the configurations for the Web Application Firewall (WAF) functionality.
+	// This includes settings that allow the enablement of WAF functionality for the Istio
+	// Ingress Gateway.
+	// +optional
+	Waf Waf `json:"waf,omitempty"`
+}
+
+type Waf struct {
+	// Enabled is a boolean field that indicates whether the Web Application Firewall (WAF)
+	// functionality is enabled or not. When set to true, it allows services to opt-in to
+	// have their ingress traffic examined by ModSecurity, thereby enhancing security at
+	// the ingress points. By default, this field is false, meaning WAF functionality is
+	// not enabled unless explicitly specified.
+	// +optional
+	Enabled bool `json:"enabled,omitempty"`
+	// ListenPort specifies the port on which the Web Application Firewall (WAF) listens.
+	// This is an optional field. By default, WAF listens on port 5051. If there is a need
+	// to run the WAF service on a different port, this field can be configured accordingly.
+	// It is important to ensure that no two services are running on the same port to avoid
+	// port conflicts.
+	// +optional
+	ListenPort int `json:"listenPort,omitempty"`
+	// CoreRuleSetsConfigMap specifies the name of the Kubernetes ConfigMap containing customized
+	// Web Application Firewall (WAF) core rule sets. If users want to customize or add WAF core rule sets,
+	// they need to create a Kubernetes ConfigMap and specify its name using this field. The ConfigMap should
+	// include the core ruleset files that will be used by Dikastes for executing the WAF functionality.
+	// This field is optional, and if not specified, no customized WAF core rule set will be enabled.
+	// +optional
+	CoreRuleSetsConfigMap string `json:"coreRuleSetsConfigMap,omitempty"`
+	// Workloads is a mandatory field that specifies the list of workloads for which the Web Application
+	// Firewall (WAF) needs to be enabled. Each workload is defined by the Workload struct, which includes
+	// details such as the name, namespace, context and specific labels for identifying the workload. The WAF
+	// functionality will be applied to these specified workloads to enhance their ingress traffic security.
+	Workloads []Workload `json:"workloads"`
+}
+
+type Workload struct {
+	// Name specifies the name of the EnvoyFilter which will direct the traffic to Dikastes for consulting the Web
+	// Application Firewall (WAF) functionality. The tigera-operator will automatically prefix this name with "tigera."
+	// and suffix it with ".waf-ext-authz" to signify that it is controlled by Tigera and used for external authorization
+	// for WAF. This name should be unique, and an ideal way to construct a name that ensures uniqueness is to follow the
+	// pattern "<namespace>.<context>.<application-name>". This naming convention helps in effectively identifying
+	// and managing the EnvoyFilters in the context of WAF.
+	Name string `json:"name"`
+	// Namespace specifies the Kubernetes namespace for which the EnvoyFilter will be applicable. This determines the
+	// scope of the EnvoyFilter's effect within the Kubernetes cluster. If the specified namespace is the Istio
+	// rootNamespace (i.e., the namespace in which Istio is installed), then the EnvoyFilter becomes a global filter,
+	// applying to workloads across all namespaces, provided their labels match the specified criteria.
+	Namespace string `json:"namespace"`
+	// Context specifies the context of the EnvoyFilter within the Istio service mesh. The value of this field will
+	// always be "gateway" for the Istio Gateway (either ingress or egress) and "sidecar" for Istio workloads. This
+	// field is crucial in determining the operational context of the EnvoyFilter, whether it is meant to be applied
+	// to traffic flowing through the Istio Gateway or to traffic within the individual Istio workloads (sidecars).
+	Context string `json:"context"`
+	// Labels specify the workload labels for which the EnvoyFilter is applicable. This field is mandatory; otherwise,
+	// the EnvoyFilter will be applied to all workloads within the specified Kubernetes namespace, potentially disrupting
+	// the normal functionality of services where the EnvoyFilter's context matches. The ideal way to set this value is by
+	// copying the label values from Kubernetes deployment units (such as pods, deployments, daemonsets, or any other
+	// Kubernetes building blocks that deploy pods). These labels ensure that the EnvoyFilter is targeted precisely to the
+	// intended workloads, based on their label selectors.
+	Labels map[string]string `json:"labels"`
 }
 
 // ApplicationLayerStatus defines the observed state of ApplicationLayer
