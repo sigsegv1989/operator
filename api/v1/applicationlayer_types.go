@@ -1,4 +1,4 @@
-// Copyright (c) 2021-2023 Tigera, Inc. All rights reserved.
+// Copyright (c) 2021-2024 Tigera, Inc. All rights reserved.
 /*
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +17,7 @@ limitations under the License.
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -91,26 +92,34 @@ type LogCollectionSpec struct {
 }
 
 type IstioConfig struct {
-	//metav1.TypeMeta   `json:",inline"`
-	//metav1.ObjectMeta `json:"metadata,omitempty"`
-	//Spec              istiooperator.IstioOperatorSpec `json:"spec"`
+	// sidecarInjectorWebhookOverride allow users to override the sidecar injector webhook configurations, enabling
+	// the injection of custom sidecar templates alongside the Tigera owned dikastes template for WAF functionality.
+	// sidecarInjectorWebhookOverride is an optional field that enables the customization of the sidecar injector
+	// webhook configuration. Users can utilize this field to inject custom sidecar templates in addition to the
+	// Tigera-provided dikastes sidecar template for WAF functionality. This customization is crucial when deploying
+	// custom sidecar injector templates due to the IstioOperator CR's limitation, which supports only a single instance
+	// per cluster. Specifying custom templates here ensures that previous custom sidecar injection configurations are
+	// not overwritten. Although this field is essential for deploying custom templates, it remains optional for other use cases.
+	// Configuration through this field allows the tigera-operator to consolidate all custom sidecar injection templates
+	// into a single IstioOperator CR, promoting configuration unity and preventing conflicts.
 	// +optional
-	Profile string `json:"profile,omitempty"`
+	SidecarInjectorWebhook SidecarInjectorWebhookOverride `json:"sidecarInjectorWebhookOverride,omitempty"`
 	// Waf defines the configurations for the Web Application Firewall (WAF) functionality.
 	// This includes settings that allow the enablement of WAF functionality for the Istio
 	// Ingress Gateway.
 	// +optional
-	Waf Waf `json:"waf,omitempty"`
+	Waf *WafConfig `json:"waf,omitempty"`
 }
 
-type Waf struct {
-	// Enabled is a boolean field that indicates whether the Web Application Firewall (WAF)
-	// functionality is enabled or not. When set to true, it allows services to opt-in to
-	// have their ingress traffic examined by ModSecurity, thereby enhancing security at
-	// the ingress points. By default, this field is false, meaning WAF functionality is
-	// not enabled unless explicitly specified.
-	// +optional
-	Enabled bool `json:"enabled,omitempty"`
+// SidecarInjectorWebhookOverride contains optional overrides for the sidecar injector webhook.
+type SidecarInjectorWebhookOverride struct {
+	// Templates allow users to specify custom templates for sidecar injection. The field expects a map where the key
+	// is the template name, and the value is a Kubernetes container specification object.
+	// More Info: https://istio.io/latest/docs/setup/additional-setup/sidecar-injection/#custom-templates-experimental
+	Templates map[string]corev1.PodSpec `json:"templates,omitempty"`
+}
+
+type WafConfig struct {
 	// ListenPort specifies the port on which the Web Application Firewall (WAF) listens.
 	// This is an optional field. By default, WAF listens on port 5051. If there is a need
 	// to run the WAF service on a different port, this field can be configured accordingly.
@@ -118,13 +127,6 @@ type Waf struct {
 	// port conflicts.
 	// +optional
 	ListenPort int `json:"listenPort,omitempty"`
-	// CoreRuleSetsConfigMap specifies the name of the Kubernetes ConfigMap containing customized
-	// Web Application Firewall (WAF) core rule sets. If users want to customize or add WAF core rule sets,
-	// they need to create a Kubernetes ConfigMap and specify its name using this field. The ConfigMap should
-	// include the core ruleset files that will be used by Dikastes for executing the WAF functionality.
-	// This field is optional, and if not specified, no customized WAF core rule set will be enabled.
-	// +optional
-	CoreRuleSetsConfigMap string `json:"coreRuleSetsConfigMap,omitempty"`
 	// Workloads is a mandatory field that specifies the list of workloads for which the Web Application
 	// Firewall (WAF) needs to be enabled. Each workload is defined by the Workload struct, which includes
 	// details such as the name, namespace, context and specific labels for identifying the workload. The WAF
@@ -149,6 +151,7 @@ type Workload struct {
 	// always be "gateway" for the Istio Gateway (either ingress or egress) and "sidecar" for Istio workloads. This
 	// field is crucial in determining the operational context of the EnvoyFilter, whether it is meant to be applied
 	// to traffic flowing through the Istio Gateway or to traffic within the individual Istio workloads (sidecars).
+	// +kubebuilder:validation:Enum=gateway;sidecar
 	Context string `json:"context"`
 	// Labels specify the workload labels for which the EnvoyFilter is applicable. This field is mandatory; otherwise,
 	// the EnvoyFilter will be applied to all workloads within the specified Kubernetes namespace, potentially disrupting
